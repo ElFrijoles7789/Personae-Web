@@ -1,0 +1,38 @@
+import type { Metadata } from "next";
+import { Geist, Geist_Mono } from "next/font/google";
+import "./globals.css";
+import { Toaster } from "@/components/ui/toaster";
+
+const geistSans = Geist({
+  variable: "--font-geist-sans",
+  subsets: ["latin"],
+});
+
+const geistMono = Geist_Mono({
+  variable: "--font-geist-mono",
+  subsets: ["latin"],
+});
+
+export const metadata: Metadata = {
+  title: "Personajes IA — Crea y habla con personajes ficticios",
+  description: "Crea personajes ficticios con IA, chatea sin censuras, edita mensajes, rebobina, sube avatares y publica en la galería.",
+  keywords: ["personajes", "IA", "rol", "chat", "ficción", "rolplay"],
+  authors: [{ name: "Personajes IA" }],
+};
+
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
+  return (
+    <html lang="en" suppressHydrationWarning>
+      <body
+        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background text-foreground`}
+      >
+        {children}
+        <Toaster />
+      </body>
+    </html>
+  );
+}
