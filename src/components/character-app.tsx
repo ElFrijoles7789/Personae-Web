@@ -17,6 +17,15 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
+import {
   Plus,
   Users,
   Globe,
@@ -83,6 +92,10 @@ export function CharacterApp() {
     | { type: 'chat'; id: string; title: string }
     | null
   >(null);
+  const [chatNamePrompt, setChatNamePrompt] = useState<Character | null>(null);
+  const [chatNameValue, setChatNameValue] = useState('');
+  const [renamingChatId, setRenamingChatId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState('');
   const { toast } = useToast();
 
   const loadCharacters = useCallback(async () => {
@@ -189,13 +202,16 @@ export function CharacterApp() {
     }
   }
 
-  async function startChat(c: Character) {
+  async function startChat(c: Character, title: string) {
     setLoading(true);
     try {
       const res = await fetch('/api/chats', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ characterId: c.id }),
+        body: JSON.stringify({
+          characterId: c.id,
+          title: title.trim() || `Chat con ${c.name}`,
+        }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'Error');
@@ -209,6 +225,24 @@ export function CharacterApp() {
       });
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function renameChat(id: string, title: string) {
+    const res = await fetch(`/api/chats/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title }),
+    });
+    if (res.ok) {
+      const json = await res.json();
+      setView((prev) =>
+        prev.kind === 'chat' && prev.chat.id === id
+          ? { ...prev, chat: { ...prev.chat, title: json.chat.title } }
+          : prev,
+      );
+      await loadChats();
+      toast({ title: 'Chat renombrado' });
     }
   }
 
@@ -605,7 +639,10 @@ export function CharacterApp() {
               })
             }
             onPublish={() => togglePublish(view.character)}
-            onChat={() => startChat(view.character)}
+            onChat={() => {
+              setChatNameValue(`Chat con ${view.character.name}`);
+              setChatNamePrompt(view.character);
+            }}
             loading={loading}
           />
         )}
@@ -625,7 +662,7 @@ export function CharacterApp() {
               >
                 <Home className="w-4 h-4" />
               </Button>
-              <Avatar className="w-7 h-7">
+              <Avatar className="w-7 h-7 shrink-0">
                 <AvatarImage
                   src={view.chat.character?.avatar || undefined}
                   alt={view.chat.character?.name || ''}
@@ -636,11 +673,44 @@ export function CharacterApp() {
                     .toUpperCase()}
                 </AvatarFallback>
               </Avatar>
-              <div className="min-w-0">
-                <p className="text-sm font-medium truncate">{view.chat.title}</p>
-                <p className="text-xs text-muted-foreground truncate">
-                  {view.chat.character?.name}
-                </p>
+              <div className="min-w-0 flex-1 group/title">
+                {renamingChatId === view.chat.id ? (
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      const t = renameValue.trim();
+                      if (t) renameChat(view.chat.id, t);
+                      setRenamingChatId(null);
+                    }}
+                    className="flex items-center gap-1"
+                  >
+                    <Input
+                      autoFocus
+                      value={renameValue}
+                      onChange={(e) => setRenameValue(e.target.value)}
+                      onBlur={() => setRenamingChatId(null)}
+                      className="h-7 text-sm py-0"
+                    />
+                  </form>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRenameValue(view.chat.title);
+                      setRenamingChatId(view.chat.id);
+                    }}
+                    className="text-left flex items-center gap-1 max-w-full group/edit"
+                    title="Click para renombrar"
+                  >
+                    <p className="text-sm font-medium truncate">
+                      {view.chat.title}
+                    </p>
+                    <Pencil className="w-3 h-3 text-muted-foreground opacity-0 group-hover/edit:opacity-100 transition-opacity shrink-0" />
+                    <span className="text-xs text-muted-foreground truncate">
+                      · {view.chat.character?.name}
+                    </span>
+                  </button>
+                )}
               </div>
             </header>
             <ChatView
@@ -705,6 +775,73 @@ export function CharacterApp() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Dialog
+        open={!!chatNamePrompt}
+        onOpenChange={(o) => {
+          if (!o) {
+            setChatNamePrompt(null);
+            setChatNameValue('');
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Nombre del chat</DialogTitle>
+            <DialogDescription>
+              Ponle un nombre a tu conversación con{' '}
+              {chatNamePrompt?.name}. Podrás renombrarlo más tarde haciendo
+              clic en el título del chat.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-2">
+            <Label htmlFor="chat-name" className="sr-only">
+              Nombre del chat
+            </Label>
+            <Input
+              id="chat-name"
+              autoFocus
+              value={chatNameValue}
+              onChange={(e) => setChatNameValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  if (chatNamePrompt) {
+                    startChat(chatNamePrompt, chatNameValue);
+                    setChatNamePrompt(null);
+                    setChatNameValue('');
+                  }
+                }
+              }}
+              placeholder={`Chat con ${chatNamePrompt?.name || ''}`}
+            />
+          </div>
+          <DialogFooter>
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setChatNamePrompt(null);
+                setChatNameValue('');
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button
+              disabled={loading}
+              onClick={() => {
+                if (chatNamePrompt) {
+                  startChat(chatNamePrompt, chatNameValue);
+                  setChatNamePrompt(null);
+                  setChatNameValue('');
+                }
+              }}
+            >
+              {loading && <Loader2 className="w-4 h-4 mr-1 animate-spin" />}
+              Empezar chat
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
