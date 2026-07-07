@@ -1,12 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { getCurrentUser } from '@/lib/session';
 
-// GET /api/chats?characterId=...
+// GET /api/chats?characterId=... — returns ONLY the current user's chats
 export async function GET(req: NextRequest) {
+  const user = await getCurrentUser();
+  if (!user) {
+    return NextResponse.json({ chats: [] });
+  }
   const { searchParams } = new URL(req.url);
   const characterId = searchParams.get('characterId');
   const chats = await db.chat.findMany({
-    where: characterId ? { characterId } : undefined,
+    where: {
+      userId: user.id,
+      ...(characterId ? { characterId } : {}),
+    },
     orderBy: { updatedAt: 'desc' },
     include: { character: true },
   });
@@ -14,6 +22,13 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const user = await getCurrentUser();
+  if (!user) {
+    return NextResponse.json(
+      { error: 'Debes iniciar sesión' },
+      { status: 401 },
+    );
+  }
   const body = await req.json();
   const { characterId, title } = body;
   if (!characterId) {
@@ -31,9 +46,17 @@ export async function POST(req: NextRequest) {
       { status: 404 },
     );
   }
+  // Only allow starting chats on your own characters OR public ones
+  if (character.userId !== user.id && character.visibility !== 'public') {
+    return NextResponse.json(
+      { error: 'Personaje no encontrado' },
+      { status: 404 },
+    );
+  }
   const chat = await db.chat.create({
     data: {
       characterId,
+      userId: user.id,
       title: title || `Chat con ${character.name}`,
     },
   });

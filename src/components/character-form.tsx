@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
-import { Loader2, Sparkles, Upload, X } from 'lucide-react';
+import { Loader2, Sparkles, Upload, X, Lock, Globe2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 export interface CharacterFormData {
@@ -18,6 +18,7 @@ export interface CharacterFormData {
   avatar: string;
   creatorName: string;
   tags: string;
+  visibility: 'private' | 'public';
 }
 
 const EMPTY: CharacterFormData = {
@@ -30,6 +31,7 @@ const EMPTY: CharacterFormData = {
   avatar: '',
   creatorName: '',
   tags: '',
+  visibility: 'private',
 };
 
 interface Props {
@@ -231,6 +233,45 @@ export function CharacterForm({
               onChange={(e) => set('tags', e.target.value)}
               placeholder="fantasía, oscuro, romance"
             />
+          </div>
+          <div>
+            <Label>Visibilidad</Label>
+            <div className="grid grid-cols-2 gap-2 mt-1">
+              <button
+                type="button"
+                onClick={() => set('visibility', 'private')}
+                className={`flex items-center gap-2 px-3 py-2 rounded-md border text-sm transition-colors ${
+                  data.visibility === 'private'
+                    ? 'border-primary bg-secondary text-foreground'
+                    : 'border-border text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                <Lock className="w-4 h-4 shrink-0" />
+                <span className="text-left">
+                  <span className="block font-medium">Privado</span>
+                  <span className="block text-[11px] text-muted-foreground">
+                    Solo tú
+                  </span>
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => set('visibility', 'public')}
+                className={`flex items-center gap-2 px-3 py-2 rounded-md border text-sm transition-colors ${
+                  data.visibility === 'public'
+                    ? 'border-primary bg-secondary text-foreground'
+                    : 'border-border text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                <Globe2 className="w-4 h-4 shrink-0" />
+                <span className="text-left">
+                  <span className="block font-medium">Público</span>
+                  <span className="block text-[11px] text-muted-foreground">
+                    Visible en galería
+                  </span>
+                </span>
+              </button>
+            </div>
           </div>
         </div>
       </div>

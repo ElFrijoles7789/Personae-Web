@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import { useSession } from 'next-auth/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -38,9 +39,12 @@ import {
   Home,
   Search,
   Loader2,
+  Lock,
+  Globe2,
 } from 'lucide-react';
 import { CharacterForm, type CharacterFormData } from './character-form';
 import { ChatView, type ChatMessage } from './chat-view';
+import { AuthBar } from './auth-bar';
 import { useToast } from '@/hooks/use-toast';
 
 interface Character {
@@ -54,7 +58,9 @@ interface Character {
   avatar: string | null;
   creatorName: string | null;
   tags: string | null;
-  published: boolean;
+  visibility: 'private' | 'public';
+  userId?: string;
+  user?: { name: string | null } | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -97,6 +103,8 @@ export function CharacterApp() {
   const [renamingChatId, setRenamingChatId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const { toast } = useToast();
+  const { data: session, status } = useSession();
+  const isAuthenticated = status === 'authenticated' && !!session?.user;
 
   const loadCharacters = useCallback(async () => {
     const res = await fetch('/api/characters');
@@ -117,9 +125,21 @@ export function CharacterApp() {
   }, []);
 
   useEffect(() => {
+    if (status === 'loading') return;
     loadCharacters();
     loadChats();
-  }, [loadCharacters, loadChats]);
+    if (tab === 'gallery') loadGallery();
+    // reset view to home if user logged out
+    if (!isAuthenticated) {
+      setView((prev) =>
+        prev.kind === 'create' ||
+        prev.kind === 'edit' ||
+        prev.kind === 'chat'
+          ? { kind: 'home' }
+          : prev,
+      );
+    }
+  }, [status, isAuthenticated, loadCharacters, loadChats, loadGallery, tab]);
 
   useEffect(() => {
     if (tab === 'gallery') loadGallery();
@@ -184,17 +204,21 @@ export function CharacterApp() {
   }
 
   async function togglePublish(c: Character) {
+    const nextVisibility = c.visibility === 'public' ? 'private' : 'public';
     const res = await fetch(`/api/characters/${c.id}/publish`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ published: !c.published }),
+      body: JSON.stringify({ visibility: nextVisibility }),
     });
     const json = await res.json();
     if (res.ok) {
       await loadCharacters();
-      if (c.published) loadGallery();
+      loadGallery();
       toast({
-        title: c.published ? 'Despublicado' : 'Publicado en la galería',
+        title:
+          nextVisibility === 'public'
+            ? 'Personaje público en la galería'
+            : 'Personaje guardado como privado',
       });
       if (view.kind === 'character' && view.character.id === c.id) {
         setView({ kind: 'character', character: json.character });
@@ -382,7 +406,13 @@ export function CharacterApp() {
         <div className="p-4 border-b">
           <Button
             className="w-full"
-            onClick={() => setView({ kind: 'create' })}
+            disabled={!isAuthenticated}
+            onClick={() => {
+              if (isAuthenticated) setView({ kind: 'create' });
+            }}
+            title={
+              isAuthenticated ? '' : 'Inicia sesión para crear personajes'
+            }
           >
             <Plus className="w-4 h-4 mr-1" />
             Crear personaje
@@ -535,7 +565,7 @@ export function CharacterApp() {
           )}
         </ScrollArea>
 
-        <div className="p-3 border-t">
+        <div className="p-3 border-t space-y-2">
           <Button
             variant="ghost"
             size="sm"
@@ -545,6 +575,7 @@ export function CharacterApp() {
             <Home className="w-4 h-4 mr-2" />
             Inicio
           </Button>
+          <AuthBar />
         </div>
       </aside>
 
@@ -575,7 +606,12 @@ export function CharacterApp() {
 
       {/* Main */}
       <main className="flex-1 min-w-0 flex flex-col pt-12 md:pt-0">
-        {view.kind === 'home' && <HomeView onCreate={() => setView({ kind: 'create' })} />}
+        {view.kind === 'home' && (
+          <HomeView
+            authenticated={isAuthenticated}
+            onCreate={() => setView({ kind: 'create' })}
+          />
+        )}
 
         {view.kind === 'create' && (
           <div className="flex-1 overflow-y-auto p-4 md:p-8">
@@ -617,6 +653,7 @@ export function CharacterApp() {
                 avatar: view.character.avatar || '',
                 creatorName: view.character.creatorName || '',
                 tags: view.character.tags || '',
+                visibility: view.character.visibility,
               }}
               onSubmit={(d) => updateCharacter(view.character.id, d)}
               onCancel={() =>
@@ -728,11 +765,14 @@ export function CharacterApp() {
       </main>
 
       {/* Mobile bottom action bar */}
-      <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-sidebar border-t p-2 flex gap-2">
+      <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-sidebar border-t p-2 flex gap-2 items-center">
         <Button
           className="flex-1"
           size="sm"
-          onClick={() => setView({ kind: 'create' })}
+          disabled={!isAuthenticated}
+          onClick={() => {
+            if (isAuthenticated) setView({ kind: 'create' });
+          }}
         >
           <Plus className="w-4 h-4 mr-1" />
           Nuevo
@@ -744,6 +784,9 @@ export function CharacterApp() {
         >
           <Home className="w-4 h-4" />
         </Button>
+        <div className="shrink-0">
+          <AuthBar compact />
+        </div>
       </div>
 
       <AlertDialog
@@ -911,19 +954,35 @@ function CharacterRow({
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1">
           <p className="text-sm font-medium truncate">{c.name}</p>
-          {c.published && (
-            <Globe className="w-3 h-3 text-muted-foreground shrink-0" />
+          {c.visibility === 'public' ? (
+            <Globe2
+              className="w-3 h-3 text-muted-foreground shrink-0"
+              aria-label="Público"
+            />
+          ) : (
+            <Lock
+              className="w-3 h-3 text-muted-foreground shrink-0"
+              aria-label="Privado"
+            />
           )}
         </div>
         <p className="text-xs text-muted-foreground truncate">
-          {showAuthor && c.creatorName ? `por ${c.creatorName}` : c.description}
+          {showAuthor && (c.creatorName || c.user?.name)
+            ? `por ${c.creatorName || c.user?.name}`
+            : c.description}
         </p>
       </div>
     </div>
   );
 }
 
-function HomeView({ onCreate }: { onCreate: () => void }) {
+function HomeView({
+  onCreate,
+  authenticated,
+}: {
+  onCreate: () => void;
+  authenticated: boolean;
+}) {
   return (
     <div className="flex-1 overflow-y-auto">
       <div className="max-w-3xl mx-auto px-4 py-10 md:py-20 text-center">
@@ -936,13 +995,20 @@ function HomeView({ onCreate }: { onCreate: () => void }) {
         <p className="text-muted-foreground mb-8 max-w-xl mx-auto">
           Describe quién es tu personaje y la IA generará su personalidad, su
           apariencia y su escenario. Luego podrás chatear sin censuras, editar
-          mensajes, rebobinar la historia y publicar el personaje para que
-          otros lo usen.
+          mensajes, rebobinar la historia y guardar tus personajes en privado
+          o publicarlos en la galería.
         </p>
-        <Button size="lg" onClick={onCreate}>
-          <Plus className="w-4 h-4 mr-2" />
-          Crear mi primer personaje
-        </Button>
+        {authenticated ? (
+          <Button size="lg" onClick={onCreate}>
+            <Plus className="w-4 h-4 mr-2" />
+            Crear mi primer personaje
+          </Button>
+        ) : (
+          <div className="inline-flex items-center gap-2 px-4 py-3 rounded-md border bg-card text-sm text-muted-foreground">
+            <Lock className="w-4 h-4" />
+            Inicia sesión en la barra lateral para empezar a crear personajes.
+          </div>
+        )}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-12 text-left">
           <Feature
             icon={<Sparkles className="w-4 h-4" />}
@@ -955,9 +1021,9 @@ function HomeView({ onCreate }: { onCreate: () => void }) {
             desc="Habla de lo que quieras. Usa *asteriscos* para acciones."
           />
           <Feature
-            icon={<Globe className="w-4 h-4" />}
-            title="Publica y comparte"
-            desc="Sube tu personaje a la galería pública para que otros lo usen."
+            icon={<Globe2 className="w-4 h-4" />}
+            title="Privado o público"
+            desc="Guarda tus personajes en privado o publícalos en la galería."
           />
         </div>
       </div>
@@ -1017,16 +1083,21 @@ function CharacterDetail({
           <div className="flex-1 text-center sm:text-left">
             <div className="flex items-center justify-center sm:justify-start gap-2 flex-wrap">
               <h1 className="text-2xl font-bold">{c.name}</h1>
-              {c.published && (
+              {c.visibility === 'public' ? (
                 <Badge variant="secondary" className="gap-1">
-                  <Globe className="w-3 h-3" />
-                  Publicado
+                  <Globe2 className="w-3 h-3" />
+                  Público
+                </Badge>
+              ) : (
+                <Badge variant="outline" className="gap-1">
+                  <Lock className="w-3 h-3" />
+                  Privado
                 </Badge>
               )}
             </div>
-            {c.creatorName && (
+            {(c.creatorName || c.user?.name) && (
               <p className="text-sm text-muted-foreground mt-1">
-                por {c.creatorName}
+                por {c.creatorName || c.user?.name}
               </p>
             )}
             {tags.length > 0 && (
@@ -1053,8 +1124,17 @@ function CharacterDetail({
                 Editar
               </Button>
               <Button variant="outline" onClick={onPublish}>
-                <Share2 className="w-4 h-4 mr-1" />
-                {c.published ? 'Despublicar' : 'Publicar'}
+                {c.visibility === 'public' ? (
+                  <>
+                    <Lock className="w-4 h-4 mr-1" />
+                    Hacer privado
+                  </>
+                ) : (
+                  <>
+                    <Globe2 className="w-4 h-4 mr-1" />
+                    Hacer público
+                  </>
+                )}
               </Button>
               <Button variant="ghost" onClick={onDelete}>
                 <Trash2 className="w-4 h-4 mr-1 text-destructive" />

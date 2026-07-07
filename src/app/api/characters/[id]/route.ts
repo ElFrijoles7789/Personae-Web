@@ -1,13 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { getCurrentUser } from '@/lib/session';
 
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
+  const user = await getCurrentUser();
   const character = await db.character.findUnique({ where: { id } });
   if (!character) {
+    return NextResponse.json({ error: 'No encontrado' }, { status: 404 });
+  }
+  // Visible if public OR if owner
+  if (character.visibility !== 'public' && character.userId !== user?.id) {
     return NextResponse.json({ error: 'No encontrado' }, { status: 404 });
   }
   return NextResponse.json({ character });
@@ -18,6 +24,15 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
+  const user = await getCurrentUser();
+  if (!user) {
+    return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
+  }
+  const existing = await db.character.findUnique({ where: { id } });
+  if (!existing || existing.userId !== user.id) {
+    return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
+  }
+
   const body = await req.json();
   const {
     name,
@@ -30,7 +45,7 @@ export async function PUT(
     avatarSource,
     creatorName,
     tags,
-    published,
+    visibility,
   } = body;
 
   try {
@@ -49,7 +64,9 @@ export async function PUT(
         ...(avatarSource !== undefined ? { avatarSource } : {}),
         ...(creatorName !== undefined ? { creatorName } : {}),
         ...(tags !== undefined ? { tags } : {}),
-        ...(published !== undefined ? { published } : {}),
+        ...(visibility !== undefined
+          ? { visibility: visibility === 'public' ? 'public' : 'private' }
+          : {}),
       },
     });
     return NextResponse.json({ character });
@@ -67,6 +84,14 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
+  const user = await getCurrentUser();
+  if (!user) {
+    return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
+  }
+  const existing = await db.character.findUnique({ where: { id } });
+  if (!existing || existing.userId !== user.id) {
+    return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
+  }
   try {
     await db.character.delete({ where: { id } });
     return NextResponse.json({ ok: true });

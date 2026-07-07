@@ -1,14 +1,28 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { getCurrentUser } from '@/lib/session';
 
+// GET /api/characters — returns ONLY the current user's characters (private + public).
 export async function GET() {
+  const user = await getCurrentUser();
+  if (!user) {
+    return NextResponse.json({ characters: [] });
+  }
   const characters = await db.character.findMany({
+    where: { userId: user.id },
     orderBy: { updatedAt: 'desc' },
   });
   return NextResponse.json({ characters });
 }
 
 export async function POST(req: NextRequest) {
+  const user = await getCurrentUser();
+  if (!user) {
+    return NextResponse.json(
+      { error: 'Debes iniciar sesión para crear personajes' },
+      { status: 401 },
+    );
+  }
   try {
     const body = await req.json();
     const {
@@ -22,6 +36,7 @@ export async function POST(req: NextRequest) {
       avatarSource,
       creatorName,
       tags,
+      visibility,
     } = body;
 
     if (!name || !description) {
@@ -43,6 +58,8 @@ export async function POST(req: NextRequest) {
         avatarSource: avatarSource ?? null,
         creatorName: creatorName ?? null,
         tags: tags ?? null,
+        visibility: visibility === 'public' ? 'public' : 'private',
+        userId: user.id,
       },
     });
 

@@ -10,22 +10,77 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model User {
+  id            String          @id @default(cuid())
+  email         String          @unique
+  name          String?
+  password      String? // for credentials provider
+  image         String?
+  emailVerified DateTime?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  accounts      Account[]
+  sessions      Session[]
+  characters    Character[]
+  chats         Chat[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
 model Character {
-  id                  String   @id @default(cuid())
-  name                String
-  description         String   // brief user-provided description used for AI character creation
-  physicalDescription String?  // physical traits
-  psychologicalDescription String? // psychological traits
-  scenario            String?  // initial scenario / setting
-  greeting            String?  // opening message from character
-  avatar              String?  // URL or data path to avatar image
-  avatarSource        String?  // optional: source URL if AI-generated
-  creatorName         String?  // display name of creator
-  published           Boolean  @default(false)
-  tags                String?  // comma separated tags
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
-  chats               Chat[]
+  id                          String   @id @default(cuid())
+  name                        String
+  description                 String
+  physicalDescription         String?
+  psychologicalDescription    String?
+  scenario                    String?
+  greeting                    String?
+  avatar                      String?
+  avatarSource                String?
+  creatorName                 String?
+  tags                        String?
+  // visibility: "private" (only owner) | "public" (visible in gallery to everyone)
+  visibility                  String   @default("private")
+  userId                      String
+  user                        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt                   DateTime @default(now())
+  updatedAt                   DateTime @updatedAt
+  chats                       Chat[]
+
+  @@index([userId])
+  @@index([visibility])
 }
 
 model Chat {
@@ -33,16 +88,20 @@ model Chat {
   title       String
   characterId String
   character   Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   messages    Message[]
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
+
+  @@index([userId])
 }
 
 model Message {
   id        String   @id @default(cuid())
   chatId    String
   chat      Chat     @relation(fields: [chatId], references: [id], onDelete: Cascade)
-  role      String   // "user" | "assistant" | "system"
+  role      String
   content   String
   createdAt DateTime @default(now())
 }
