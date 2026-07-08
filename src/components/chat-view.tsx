@@ -17,6 +17,7 @@ import {
   Square,
 } from 'lucide-react';
 import { renderRichText } from '@/lib/format';
+import { detectLanguage, languageToLocale } from '@/lib/lang-detect';
 import { useToast } from '@/hooks/use-toast';
 
 export interface ChatMessage {
@@ -56,6 +57,7 @@ export function ChatView({
   const [ttsLoading, setTtsLoading] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -84,67 +86,131 @@ export function ChatView({
     setEditDraft('');
   }
 
-  async function speakMessage(m: ChatMessage) {
-    // If already speaking this message, stop
-    if (speakingId === m.id) {
-      audioRef.current?.pause();
-      audioRef.current = null;
-      setSpeakingId(null);
-      return;
-    }
-    // Stop any current audio
+  function stopAllPlayback() {
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current = null;
     }
-    setTtsLoading(m.id);
-    try {
-      // Strip asterisk-wrapped actions for cleaner speech
-      const cleanText = m.content.replace(/\*[^*]*\*/g, '').trim();
-      const textToSpeak = cleanText || m.content;
-      const res = await fetch('/api/ai/tts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          text: textToSpeak,
-          voiceModelId: voiceModelId || undefined,
-        }),
-      });
-      if (!res.ok) {
-        const json = await res.json().catch(() => ({}));
-        throw new Error(json.error || 'Error al generar audio');
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+    }
+    if (utteranceRef.current) {
+      utteranceRef.current = null;
+    }
+  }
+
+  async function speakMessage(m: ChatMessage) {
+    // If already speaking this message, stop
+    if (speakingId === m.id) {
+      stopAllPlayback();
+      setSpeakingId(null);
+      return;
+    }
+    // Stop any current audio
+    stopAllPlayback();
+    setSpeakingId(null);
+
+    // Strip asterisk-wrapped actions for cleaner speech
+    const cleanText = m.content.replace(/\*[^*]*\*/g, '').trim();
+    const textToSpeak = cleanText || m.content;
+
+    // If a custom voice model is linked, use the z-ai SDK TTS (server-side)
+    if (voiceModelId) {
+      setTtsLoading(m.id);
+      try {
+        const res = await fetch('/api/ai/tts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            text: textToSpeak,
+            voiceModelId: voiceModelId,
+          }),
+        });
+        if (!res.ok) {
+          const json = await res.json().catch(() => ({}));
+          throw new Error(json.error || 'Error al generar audio');
+        }
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const audio = new Audio(url);
+        audio.onended = () => {
+          setSpeakingId(null);
+          URL.revokeObjectURL(url);
+        };
+        audio.onerror = () => {
+          setSpeakingId(null);
+          URL.revokeObjectURL(url);
+        };
+        audioRef.current = audio;
+        setSpeakingId(m.id);
+        await audio.play();
+      } catch (e) {
+        toast({
+          title: 'No se pudo generar el audio',
+          description: e instanceof Error ? e.message : '',
+          variant: 'destructive',
+        });
+      } finally {
+        setTtsLoading(null);
       }
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const audio = new Audio(url);
-      audio.onended = () => {
-        setSpeakingId(null);
-        URL.revokeObjectURL(url);
-      };
-      audio.onerror = () => {
-        setSpeakingId(null);
-        URL.revokeObjectURL(url);
-      };
-      audioRef.current = audio;
-      setSpeakingId(m.id);
-      await audio.play();
-    } catch (e) {
+      return;
+    }
+
+    // Default voice: use the browser's built-in speechSynthesis API
+    // This automatically reads in the detected language of the text
+    if (typeof window === 'undefined' || !window.speechSynthesis) {
       toast({
-        title: 'No se pudo generar el audio',
-        description: e instanceof Error ? e.message : '',
+        title: 'Tu navegador no soporta lectura en voz alta',
         variant: 'destructive',
       });
-    } finally {
-      setTtsLoading(null);
+      return;
     }
+
+    const lang = detectLanguage(textToSpeak);
+    const locale = languageToLocale(lang);
+    const utterance = new SpeechSynthesisUtterance(textToSpeak);
+    utterance.lang = locale;
+    utterance.rate = 1.0;
+
+    // Try to find a voice matching the detected locale
+    const voices = window.speechSynthesis.getVoices();
+    const matchingVoice =
+      voices.find((v) => v.lang === locale) ||
+      voices.find((v) => v.lang.startsWith(lang)) ||
+      voices.find((v) => v.lang.toLowerCase().includes(lang));
+    if (matchingVoice) {
+      utterance.voice = matchingVoice;
+    }
+
+    utterance.onend = () => {
+      setSpeakingId(null);
+      utteranceRef.current = null;
+    };
+    utterance.onerror = () => {
+      setSpeakingId(null);
+      utteranceRef.current = null;
+    };
+
+    utteranceRef.current = utterance;
+    setSpeakingId(m.id);
+    window.speechSynthesis.speak(utterance);
   }
 
   // Cleanup audio on unmount
   useEffect(() => {
     return () => {
-      audioRef.current?.pause();
-      audioRef.current = null;
+      stopAllPlayback();
     };
+  }, []);
+
+  // Preload speechSynthesis voices (some browsers load them async)
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+      window.speechSynthesis.getVoices();
+      window.speechSynthesis.onvoiceschanged = () => {
+        window.speechSynthesis.getVoices();
+      };
+    }
   }, []);
 
   return (
