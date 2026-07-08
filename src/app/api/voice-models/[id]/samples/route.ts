@@ -43,9 +43,12 @@ export async function POST(
   const buf = Buffer.from(await file.arrayBuffer());
   await fs.writeFile(fullPath, buf);
 
-  // Estimate duration from file size (rough: 16kHz mono 16-bit = 32KB/s; wav ~88KB/s at 24kHz stereo)
-  // For simplicity, estimate ~10 seconds per 100KB as a heuristic fallback
-  const estimatedSec = Math.max(1, Math.round(buf.length / 100000));
+  // Use real duration from client if provided; otherwise estimate from file size
+  const clientDuration = parseInt(formData.get('durationSec') as string, 10);
+  const estimatedSec =
+    isFinite(clientDuration) && clientDuration > 0
+      ? clientDuration
+      : Math.max(1, Math.round(buf.length / 100000));
 
   const samples = vm.samples ? vm.samples.split(',').filter(Boolean) : [];
   samples.push(`/voice-samples/${filename}`);

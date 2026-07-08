@@ -35,10 +35,11 @@ export async function POST(
   if (!valid) {
     return NextResponse.json({ error: 'Voz no válida' }, { status: 400 });
   }
-  // Require at least 30 seconds of samples total to "train"
-  if (vm.totalDurationSec < 30) {
+  // Require at least 1 audio sample to train
+  const samples = vm.samples ? vm.samples.split(',').filter(Boolean) : [];
+  if (samples.length === 0) {
     return NextResponse.json(
-      { error: `Necesitas al menos 30 segundos de audio (tienes ${vm.totalDurationSec}s)` },
+      { error: 'Sube al menos un audio antes de entrenar' },
       { status: 400 },
     );
   }

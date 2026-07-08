@@ -190,8 +190,21 @@ function VoiceModelCard({
     if (!file) return;
     setUploading(true);
     try {
+      // Read actual audio duration using HTML5 Audio API
+      const durationSec = await new Promise<number>((resolve) => {
+        const audio = document.createElement('audio');
+        audio.preload = 'metadata';
+        audio.onloadedmetadata = () => {
+          const d = audio.duration;
+          resolve(isFinite(d) && d > 0 ? Math.round(d) : 0);
+        };
+        audio.onerror = () => resolve(0);
+        audio.src = URL.createObjectURL(file);
+      });
+
       const fd = new FormData();
       fd.append('file', file);
+      fd.append('durationSec', String(durationSec));
       const res = await fetch(`/api/voice-models/${vm.id}/samples`, {
         method: 'POST',
         body: fd,
@@ -199,7 +212,8 @@ function VoiceModelCard({
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'Error');
       onChanged();
-      toast({ title: 'Audio subido', description: `+${json.estimatedSec}s estimados` });
+      const newSecs = json.estimatedSec || durationSec;
+      toast({ title: 'Audio subido', description: `+${newSecs}s de audio` });
     } catch (e) {
       toast({ title: 'Error al subir', description: e instanceof Error ? e.message : '', variant: 'destructive' });
     } finally {
@@ -295,7 +309,7 @@ function VoiceModelCard({
           </div>
         )}
 
-        {!isReady && vm.totalDurationSec >= 30 && (
+        {!isReady && samples.length > 0 && (
           <div className="space-y-2 pt-1 border-t">
             <Label className="text-xs">Elige la voz que más se parezca a tus audios:</Label>
             <Select value={selectedVoice} onValueChange={setSelectedVoice}>
@@ -312,14 +326,14 @@ function VoiceModelCard({
             </Select>
             <Button type="button" size="sm" className="w-full" onClick={train} disabled={training}>
               {training ? <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> : <Check className="w-3.5 h-3.5 mr-1" />}
-              Entrenar y activar
+              Entrenar y activar voz
             </Button>
           </div>
         )}
 
-        {!isReady && vm.totalDurationSec < 30 && (
+        {!isReady && samples.length === 0 && (
           <p className="text-[11px] text-muted-foreground text-center pt-1">
-            Sube al menos 30 segundos de audio para entrenar (tienes {vm.totalDurationSec}s)
+            Sube al menos un audio limpio para poder entrenar la voz
           </p>
         )}
 
