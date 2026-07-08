@@ -90,10 +90,18 @@ model Character {
 model VoiceModel {
   id              String   @id @default(cuid())
   name            String
-  // status: "draft" (uploading samples) | "ready" (voice selected, usable)
+  // status: "draft" (uploading samples) | "ready" (voice configured, usable)
   status          String   @default("draft")
-  // the SDK voice id chosen by the user as closest to their samples
-  voiceId         String   @default("tongtong")
+  // the browser system voice URI selected by the user (closest to their audio)
+  systemVoiceURI  String?
+  // display name of the selected system voice
+  systemVoiceName String?
+  // language of the selected system voice (BCP-47, e.g. "es-ES")
+  systemVoiceLang String?
+  // pitch adjustment (0.5 = low, 1.0 = normal, 2.0 = high)
+  pitch           Float    @default(1.0)
+  // rate/speed adjustment (0.5 = slow, 1.0 = normal, 2.0 = fast)
+  rate            Float    @default(1.0)
   // JSON array of audio sample URLs (stored as comma-separated for SQLite compatibility)
   samples         String   @default("")
   // total duration of uploaded samples in seconds

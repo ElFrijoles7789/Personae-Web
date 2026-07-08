@@ -12,30 +12,31 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import { Loader2, Mic, Upload, Trash2, Check, AudioLines, Play, Square } from 'lucide-react';
+import { Slider } from '@/components/ui/slider';
+import { Loader2, Mic, Upload, Trash2, Check, AudioLines, Play, Square, Volume2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 interface VoiceModel {
   id: string;
   name: string;
   status: string;
-  voiceId: string;
+  systemVoiceURI?: string | null;
+  systemVoiceName?: string | null;
+  systemVoiceLang?: string | null;
+  pitch?: number;
+  rate?: number;
   samples: string;
   totalDurationSec: number;
   _count?: { characters: number };
   createdAt: string;
 }
 
-interface Voice {
-  id: string;
-  label: string;
+interface SystemVoice {
+  name: string;
+  lang: string;
+  voiceURI: string;
+  localService: boolean;
+  default: boolean;
 }
 
 export function VoiceModelManager({
@@ -109,7 +110,7 @@ export function VoiceModelManager({
             Modelos de voz
           </DialogTitle>
           <DialogDescription>
-            Sube audios limpios de unos minutos y elige la voz que más se parezca. Podrás aplicar el modelo a cualquiera de tus personajes para leer mensajes en voz alta.
+            Sube audios limpios tuyos y elige la voz del sistema que más se parezca a la tuya. Ajusta el tono y la velocidad para acercarla lo más posible. Luego podrás aplicar este modelo a cualquiera de tus personajes para que lean en voz alta con esa voz.
           </DialogDescription>
         </DialogHeader>
 
@@ -118,7 +119,7 @@ export function VoiceModelManager({
             <Input
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
-              placeholder="Nombre del modelo (ej: Mi voz grave)"
+              placeholder="Nombre del modelo (ej: Mi voz)"
               onKeyDown={(e) => { if (e.key === 'Enter') createModel(); }}
             />
             <Button onClick={createModel} disabled={creating || !newName.trim()}>
@@ -164,11 +165,14 @@ function VoiceModelCard({
   onDelete: () => void;
   onReady?: () => void;
 }) {
-  const [voices, setVoices] = useState<Voice[]>([]);
+  const [systemVoices, setSystemVoices] = useState<SystemVoice[]>([]);
   const [uploading, setUploading] = useState(false);
   const [training, setTraining] = useState(false);
-  const [selectedVoice, setSelectedVoice] = useState(vm.voiceId);
+  const [selectedVoiceURI, setSelectedVoiceURI] = useState(vm.systemVoiceURI || '');
+  const [pitch, setPitch] = useState(vm.pitch ?? 1.0);
+  const [rate, setRate] = useState(vm.rate ?? 1.0);
   const [playingSample, setPlayingSample] = useState<string | null>(null);
+  const [previewing, setPreviewing] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const { toast } = useToast();
@@ -178,19 +182,33 @@ function VoiceModelCard({
   const minutes = Math.floor(vm.totalDurationSec / 60);
   const secs = vm.totalDurationSec % 60;
 
+  // Load all available browser system voices
   useEffect(() => {
-    fetch('/api/voice-models/' + vm.id + '/train')
-      .then((r) => r.json())
-      .then((d) => setVoices(d.voices || []))
-      .catch(() => {});
-  }, [vm.id]);
+    if (typeof window === 'undefined' || !window.speechSynthesis) return;
+    function loadVoices() {
+      const voices = window.speechSynthesis.getVoices();
+      setSystemVoices(
+        voices.map((v) => ({
+          name: v.name,
+          lang: v.lang,
+          voiceURI: v.voiceURI,
+          localService: v.localService,
+          default: v.default,
+        })),
+      );
+    }
+    loadVoices();
+    window.speechSynthesis.onvoiceschanged = loadVoices;
+    return () => {
+      window.speechSynthesis.onvoiceschanged = null;
+    };
+  }, []);
 
   async function uploadSample(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
     setUploading(true);
     try {
-      // Read actual audio duration using HTML5 Audio API
       const durationSec = await new Promise<number>((resolve) => {
         const audio = document.createElement('audio');
         audio.preload = 'metadata';
@@ -222,13 +240,53 @@ function VoiceModelCard({
     }
   }
 
+  function previewVoice() {
+    if (!selectedVoiceURI || !window.speechSynthesis) {
+      toast({ title: 'Selecciona una voz primero', variant: 'destructive' });
+      return;
+    }
+    if (previewing) {
+      window.speechSynthesis.cancel();
+      setPreviewing(false);
+      return;
+    }
+    const voices = window.speechSynthesis.getVoices();
+    const voice = voices.find((v) => v.voiceURI === selectedVoiceURI);
+    if (!voice) {
+      toast({ title: 'Voz no encontrada en este navegador', variant: 'destructive' });
+      return;
+    }
+    const utterance = new SpeechSynthesisUtterance(
+      'Hola, esta es una prueba de cómo sonará tu personaje cuando lea los mensajes en voz alta.',
+    );
+    utterance.voice = voice;
+    utterance.lang = voice.lang;
+    utterance.pitch = pitch;
+    utterance.rate = rate;
+    utterance.onend = () => setPreviewing(false);
+    utterance.onerror = () => setPreviewing(false);
+    setPreviewing(true);
+    window.speechSynthesis.speak(utterance);
+  }
+
   async function train() {
+    if (!selectedVoiceURI) {
+      toast({ title: 'Selecciona una voz del sistema', variant: 'destructive' });
+      return;
+    }
     setTraining(true);
     try {
+      const voice = systemVoices.find((v) => v.voiceURI === selectedVoiceURI);
       const res = await fetch(`/api/voice-models/${vm.id}/train`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ voiceId: selectedVoice }),
+        body: JSON.stringify({
+          systemVoiceURI: selectedVoiceURI,
+          systemVoiceName: voice?.name || '',
+          systemVoiceLang: voice?.lang || '',
+          pitch,
+          rate,
+        }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'Error');
@@ -257,6 +315,15 @@ function VoiceModelCard({
     audioRef.current = audio;
     setPlayingSample(url);
   }
+
+  // Group voices by language
+  const voicesByLang = systemVoices.reduce<Record<string, SystemVoice[]>>((acc, v) => {
+    const langKey = v.lang.split('-')[0] || 'other';
+    if (!acc[langKey]) acc[langKey] = [];
+    acc[langKey].push(v);
+    return acc;
+  }, {});
+  const sortedLangs = Object.keys(voicesByLang).sort();
 
   return (
     <div className={`border rounded-lg p-3 ${isReady ? 'border-primary/40 bg-primary/5' : 'bg-card'}`}>
@@ -288,7 +355,7 @@ function VoiceModelCard({
         <input ref={fileRef} type="file" accept="audio/*" onChange={uploadSample} className="hidden" />
         <Button type="button" variant="outline" size="sm" className="w-full" onClick={() => fileRef.current?.click()} disabled={uploading || isReady}>
           {uploading ? <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> : <Upload className="w-3.5 h-3.5 mr-1" />}
-          {isReady ? 'Modelo ya entrenado' : 'Subir audio limpio'}
+          {isReady ? 'Modelo ya entrenado' : 'Subir audio limpio tuyo'}
         </Button>
 
         {samples.length > 0 && (
@@ -310,37 +377,89 @@ function VoiceModelCard({
         )}
 
         {!isReady && samples.length > 0 && (
-          <div className="space-y-2 pt-1 border-t">
-            <Label className="text-xs">Elige la voz que más se parezca a tus audios:</Label>
-            <Select value={selectedVoice} onValueChange={setSelectedVoice}>
-              <SelectTrigger className="h-8 text-xs">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {voices.map((v) => (
-                  <SelectItem key={v.id} value={v.id} className="text-xs">
-                    {v.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Button type="button" size="sm" className="w-full" onClick={train} disabled={training}>
-              {training ? <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> : <Check className="w-3.5 h-3.5 mr-1" />}
-              Entrenar y activar voz
-            </Button>
+          <div className="space-y-3 pt-2 border-t">
+            <div>
+              <Label className="text-xs flex items-center gap-1 mb-1">
+                <Volume2 className="w-3 h-3" />
+                Elige la voz del sistema que más se parezca a la tuya
+              </Label>
+              {systemVoices.length === 0 ? (
+                <p className="text-[11px] text-muted-foreground">
+                  Tu navegador no tiene voces del sistema disponibles. Prueba con Chrome, Edge o Safari.
+                </p>
+              ) : (
+                <select
+                  value={selectedVoiceURI}
+                  onChange={(e) => setSelectedVoiceURI(e.target.value)}
+                  className="w-full h-9 rounded-md border border-input bg-background px-2 text-xs"
+                >
+                  <option value="">— Selecciona una voz —</option>
+                  {sortedLangs.map((langKey) => (
+                    <optgroup key={langKey} label={langKey.toUpperCase()}>
+                      {voicesByLang[langKey].map((v) => (
+                        <option key={v.voiceURI} value={v.voiceURI}>
+                          {v.name} ({v.lang}){v.default ? ' ★' : ''}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </select>
+              )}
+            </div>
+
+            {selectedVoiceURI && (
+              <>
+                <div>
+                  <Label className="text-xs mb-1 block">
+                    Tono: {pitch.toFixed(1)}x {pitch < 1 ? '(más grave)' : pitch > 1 ? '(más agudo)' : '(normal)'}
+                  </Label>
+                  <Slider
+                    value={[pitch]}
+                    onValueChange={(v) => setPitch(v[0])}
+                    min={0.5}
+                    max={2.0}
+                    step={0.1}
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs mb-1 block">
+                    Velocidad: {rate.toFixed(1)}x {rate < 1 ? '(más lenta)' : rate > 1 ? '(más rápida)' : '(normal)'}
+                  </Label>
+                  <Slider
+                    value={[rate]}
+                    onValueChange={(v) => setRate(v[0])}
+                    min={0.5}
+                    max={2.0}
+                    step={0.1}
+                  />
+                </div>
+                <Button type="button" variant="outline" size="sm" className="w-full" onClick={previewVoice}>
+                  {previewing ? <><Square className="w-3.5 h-3.5 mr-1" />Detener prueba</> : <><Play className="w-3.5 h-3.5 mr-1" />Probar voz</>}
+                </Button>
+                <Button type="button" size="sm" className="w-full" onClick={train} disabled={training}>
+                  {training ? <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> : <Check className="w-3.5 h-3.5 mr-1" />}
+                  Entrenar y activar voz
+                </Button>
+              </>
+            )}
           </div>
         )}
 
         {!isReady && samples.length === 0 && (
           <p className="text-[11px] text-muted-foreground text-center pt-1">
-            Sube al menos un audio limpio para poder entrenar la voz
+            Sube al menos un audio tuyo para poder entrenar la voz
           </p>
         )}
 
         {isReady && (
-          <p className="text-[11px] text-primary text-center pt-1">
-            Voz activa: {voices.find((v) => v.id === vm.voiceId)?.label || vm.voiceId}
-          </p>
+          <div className="space-y-1 pt-1 border-t">
+            <p className="text-[11px] text-primary text-center">
+              Voz activa: {vm.systemVoiceName}
+            </p>
+            <p className="text-[10px] text-muted-foreground text-center">
+              Tono {vm.pitch?.toFixed(1)}x · Velocidad {vm.rate?.toFixed(1)}x
+            </p>
+          </div>
         )}
       </div>
     </div>

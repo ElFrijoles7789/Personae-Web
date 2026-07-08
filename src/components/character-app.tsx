@@ -59,7 +59,11 @@ interface VoiceModel {
   id: string;
   name: string;
   status: string;
-  voiceId: string;
+  systemVoiceURI?: string | null;
+  systemVoiceName?: string | null;
+  systemVoiceLang?: string | null;
+  pitch?: number;
+  rate?: number;
   userId: string;
 }
 
@@ -807,6 +811,7 @@ export function CharacterApp() {
               characterName={view.chat.character?.name || 'Personaje'}
               characterAvatar={view.chat.character?.avatar}
               voiceModelId={view.chat.character?.voiceModelId}
+              voiceModel={view.chat.character?.voiceModel}
               onSend={sendMessage}
               onEdit={editMessage}
               onDelete={deleteMessage}

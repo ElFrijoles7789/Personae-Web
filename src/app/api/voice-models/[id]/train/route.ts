@@ -2,22 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getCurrentUser } from '@/lib/session';
 
-// Available SDK voices — the user picks which sounds closest to their samples
-const AVAILABLE_VOICES = [
-  { id: 'tongtong', label: 'Tongtong — Cálida y cercana' },
-  { id: 'chuichui', label: 'Chuichui — Viva y juvenil' },
-  { id: 'xiaochen', label: 'Xiaochen — Serena y profesional' },
-  { id: 'jam', label: 'Jam — Caballero británico' },
-  { id: 'kazi', label: 'Kazi — Clara y estándar' },
-  { id: 'douji', label: 'Douji — Natural y fluida' },
-  { id: 'luodo', label: 'Luodo — Expresiva y emotiva' },
-];
-
-export async function GET() {
-  return NextResponse.json({ voices: AVAILABLE_VOICES });
-}
-
-// POST /api/voice-models/[id]/train — mark voice model as ready with selected voiceId
+// POST /api/voice-models/[id]/train — configure the voice model with selected system voice + pitch + rate
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -30,12 +15,17 @@ export async function POST(
     return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
   }
   const body = await req.json();
-  const voiceId = (body?.voiceId || '').toString().trim();
-  const valid = AVAILABLE_VOICES.some((v) => v.id === voiceId);
-  if (!valid) {
-    return NextResponse.json({ error: 'Voz no válida' }, { status: 400 });
+  const systemVoiceURI = (body?.systemVoiceURI || '').toString().trim();
+  const systemVoiceName = (body?.systemVoiceName || '').toString().trim();
+  const systemVoiceLang = (body?.systemVoiceLang || '').toString().trim();
+  const pitch = typeof body?.pitch === 'number' ? Math.max(0.5, Math.min(2.0, body.pitch)) : 1.0;
+  const rate = typeof body?.rate === 'number' ? Math.max(0.5, Math.min(2.0, body.rate)) : 1.0;
+
+  if (!systemVoiceURI) {
+    return NextResponse.json({ error: 'Selecciona una voz del sistema' }, { status: 400 });
   }
-  // Require at least 1 audio sample to train
+
+  // Require at least 1 audio sample
   const samples = vm.samples ? vm.samples.split(',').filter(Boolean) : [];
   if (samples.length === 0) {
     return NextResponse.json(
@@ -43,9 +33,17 @@ export async function POST(
       { status: 400 },
     );
   }
+
   const updated = await db.voiceModel.update({
     where: { id },
-    data: { status: 'ready', voiceId },
+    data: {
+      status: 'ready',
+      systemVoiceURI,
+      systemVoiceName: systemVoiceName || null,
+      systemVoiceLang: systemVoiceLang || null,
+      pitch,
+      rate,
+    },
   });
   return NextResponse.json({ voiceModel: updated });
 }

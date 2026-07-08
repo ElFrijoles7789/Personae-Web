@@ -27,11 +27,21 @@ export interface ChatMessage {
   createdAt: string;
 }
 
+export interface VoiceModelInfo {
+  id: string;
+  systemVoiceURI?: string | null;
+  systemVoiceName?: string | null;
+  systemVoiceLang?: string | null;
+  pitch?: number;
+  rate?: number;
+}
+
 interface ChatViewProps {
   messages: ChatMessage[];
   characterName: string;
   characterAvatar?: string | null;
   voiceModelId?: string | null;
+  voiceModel?: VoiceModelInfo | null;
   onSend: (content: string) => Promise<void>;
   onEdit: (id: string, content: string) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
@@ -44,6 +54,7 @@ export function ChatView({
   characterName,
   characterAvatar,
   voiceModelId,
+  voiceModel,
   onSend,
   onEdit,
   onDelete,
@@ -114,50 +125,7 @@ export function ChatView({
     const cleanText = m.content.replace(/\*[^*]*\*/g, '').trim();
     const textToSpeak = cleanText || m.content;
 
-    // If a custom voice model is linked, use the z-ai SDK TTS (server-side)
-    if (voiceModelId) {
-      setTtsLoading(m.id);
-      try {
-        const res = await fetch('/api/ai/tts', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            text: textToSpeak,
-            voiceModelId: voiceModelId,
-          }),
-        });
-        if (!res.ok) {
-          const json = await res.json().catch(() => ({}));
-          throw new Error(json.error || 'Error al generar audio');
-        }
-        const blob = await res.blob();
-        const url = URL.createObjectURL(blob);
-        const audio = new Audio(url);
-        audio.onended = () => {
-          setSpeakingId(null);
-          URL.revokeObjectURL(url);
-        };
-        audio.onerror = () => {
-          setSpeakingId(null);
-          URL.revokeObjectURL(url);
-        };
-        audioRef.current = audio;
-        setSpeakingId(m.id);
-        await audio.play();
-      } catch (e) {
-        toast({
-          title: 'No se pudo generar el audio',
-          description: e instanceof Error ? e.message : '',
-          variant: 'destructive',
-        });
-      } finally {
-        setTtsLoading(null);
-      }
-      return;
-    }
-
-    // Default voice: use the browser's built-in speechSynthesis API
-    // This automatically reads in the detected language of the text
+    // Use the browser's built-in speechSynthesis API for all voices
     if (typeof window === 'undefined' || !window.speechSynthesis) {
       toast({
         title: 'Tu navegador no soporta lectura en voz alta',
@@ -170,16 +138,28 @@ export function ChatView({
     const locale = languageToLocale(lang);
     const utterance = new SpeechSynthesisUtterance(textToSpeak);
     utterance.lang = locale;
-    utterance.rate = 1.0;
+    utterance.rate = voiceModel?.rate ?? 1.0;
+    utterance.pitch = voiceModel?.pitch ?? 1.0;
 
-    // Try to find a voice matching the detected locale
+    // Get all available system voices
     const voices = window.speechSynthesis.getVoices();
-    const matchingVoice =
-      voices.find((v) => v.lang === locale) ||
-      voices.find((v) => v.lang.startsWith(lang)) ||
-      voices.find((v) => v.lang.toLowerCase().includes(lang));
-    if (matchingVoice) {
-      utterance.voice = matchingVoice;
+
+    // If the character has a trained voice model with a specific system voice, use it
+    if (voiceModel?.systemVoiceURI) {
+      const modelVoice = voices.find((v) => v.voiceURI === voiceModel.systemVoiceURI);
+      if (modelVoice) {
+        utterance.voice = modelVoice;
+        utterance.lang = modelVoice.lang;
+      }
+    } else {
+      // No custom voice model — pick the best voice for the detected language
+      const matchingVoice =
+        voices.find((v) => v.lang === locale) ||
+        voices.find((v) => v.lang.startsWith(lang)) ||
+        voices.find((v) => v.lang.toLowerCase().includes(lang));
+      if (matchingVoice) {
+        utterance.voice = matchingVoice;
+      }
     }
 
     utterance.onend = () => {

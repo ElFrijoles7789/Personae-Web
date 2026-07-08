@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'El nombre es obligatorio' }, { status: 400 });
   }
   const vm = await db.voiceModel.create({
-    data: { name, userId: user.id, status: 'draft', voiceId: 'tongtong' },
+    data: { name, userId: user.id, status: 'draft' },
   });
   return NextResponse.json({ voiceModel: vm }, { status: 201 });
 }
