@@ -41,31 +41,11 @@ import {
   Loader2,
   Lock,
   Globe2,
-  Volume2,
-  Mic,
-  AudioLines,
-  Play,
-  Square,
-  Upload,
-  X,
 } from 'lucide-react';
 import { CharacterForm, type CharacterFormData } from './character-form';
 import { ChatView, type ChatMessage } from './chat-view';
 import { AuthBar } from './auth-bar';
-import { VoiceModelManager } from './voice-model-manager';
 import { useToast } from '@/hooks/use-toast';
-
-interface VoiceModel {
-  id: string;
-  name: string;
-  status: string;
-  systemVoiceURI?: string | null;
-  systemVoiceName?: string | null;
-  systemVoiceLang?: string | null;
-  pitch?: number;
-  rate?: number;
-  userId: string;
-}
 
 interface Character {
   id: string;
@@ -79,8 +59,6 @@ interface Character {
   creatorName: string | null;
   tags: string | null;
   visibility: 'private' | 'public';
-  voiceModelId?: string | null;
-  voiceModel?: VoiceModel | null;
   userId?: string;
   user?: { name: string | null } | null;
   createdAt: string;
@@ -124,25 +102,9 @@ export function CharacterApp() {
   const [chatNameValue, setChatNameValue] = useState('');
   const [renamingChatId, setRenamingChatId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
-  const [voiceManagerOpen, setVoiceManagerOpen] = useState(false);
-  const [voiceModels, setVoiceModels] = useState<VoiceModel[]>([]);
   const { toast } = useToast();
   const { data: session, status } = useSession();
   const isAuthenticated = status === 'authenticated' && !!session?.user;
-
-  const loadVoiceModels = useCallback(async () => {
-    if (!isAuthenticated) {
-      setVoiceModels([]);
-      return;
-    }
-    try {
-      const res = await fetch('/api/voice-models');
-      const json = await res.json();
-      setVoiceModels(json.voiceModels || []);
-    } catch {
-      setVoiceModels([]);
-    }
-  }, [isAuthenticated]);
 
   const loadCharacters = useCallback(async () => {
     const res = await fetch('/api/characters');
@@ -166,7 +128,6 @@ export function CharacterApp() {
     if (status === 'loading') return;
     loadCharacters();
     loadChats();
-    loadVoiceModels();
     if (tab === 'gallery') loadGallery();
     // reset view to home if user logged out
     if (!isAuthenticated) {
@@ -178,7 +139,7 @@ export function CharacterApp() {
           : prev,
       );
     }
-  }, [status, isAuthenticated, loadCharacters, loadChats, loadGallery, loadVoiceModels, tab]);
+  }, [status, isAuthenticated, loadCharacters, loadChats, loadGallery, tab]);
 
   useEffect(() => {
     if (tab === 'gallery') loadGallery();
@@ -595,31 +556,9 @@ export function CharacterApp() {
             <Home className="w-4 h-4 mr-2" />
             Inicio
           </Button>
-          {isAuthenticated && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="w-full justify-start"
-              onClick={() => setVoiceManagerOpen(true)}
-            >
-              <Mic className="w-4 h-4 mr-2" />
-              Modelos de voz
-              {voiceModels.filter((v) => v.status === 'ready').length > 0 && (
-                <Badge variant="secondary" className="ml-auto text-[10px] px-1.5 py-0">
-                  {voiceModels.filter((v) => v.status === 'ready').length}
-                </Badge>
-              )}
-            </Button>
-          )}
           <AuthBar />
         </div>
       </aside>
-
-      <VoiceModelManager
-        open={voiceManagerOpen}
-        onOpenChange={setVoiceManagerOpen}
-        onCreated={loadVoiceModels}
-      />
 
       {/* Mobile top tabs */}
       <div className="md:hidden fixed top-0 left-0 right-0 z-50 bg-sidebar border-b px-2 py-2 flex gap-1">
@@ -678,9 +617,6 @@ export function CharacterApp() {
               onSubmit={createCharacter}
               onCancel={() => setView({ kind: 'home' })}
               submitLabel="Crear personaje"
-              voiceModels={voiceModels
-                .filter((v) => v.status === 'ready')
-                .map((v) => ({ id: v.id, name: v.name, voiceId: v.voiceId }))}
             />
           </div>
         )}
@@ -706,11 +642,7 @@ export function CharacterApp() {
                 creatorName: view.character.creatorName || '',
                 tags: view.character.tags || '',
                 visibility: view.character.visibility,
-                voiceModelId: view.character.voiceModelId || '',
               }}
-              voiceModels={voiceModels
-                .filter((v) => v.status === 'ready')
-                .map((v) => ({ id: v.id, name: v.name, voiceId: v.voiceId }))}
               onSubmit={(d) => updateCharacter(view.character.id, d)}
               onCancel={() =>
                 setView({ kind: 'character', character: view.character })
@@ -810,8 +742,6 @@ export function CharacterApp() {
               messages={view.chat.messages || []}
               characterName={view.chat.character?.name || 'Personaje'}
               characterAvatar={view.chat.character?.avatar}
-              voiceModelId={view.chat.character?.voiceModelId}
-              voiceModel={view.chat.character?.voiceModel}
               onSend={sendMessage}
               onEdit={editMessage}
               onDelete={deleteMessage}
@@ -1179,12 +1109,6 @@ function GalleryView({
                       <p className="text-xs text-muted-foreground truncate">
                         por {c.creatorName || c.user?.name || 'Anónimo'}
                       </p>
-                      {c.voiceModel && (
-                        <span className="inline-flex items-center gap-1 mt-1 text-[10px] text-primary">
-                          <Volume2 className="w-2.5 h-2.5" />
-                          Voz personalizada
-                        </span>
-                      )}
                     </div>
                   </div>
                   <p className="text-xs text-muted-foreground line-clamp-3 min-h-[3.5em] leading-relaxed">
@@ -1261,12 +1185,6 @@ function CharacterDetail({
               <p className="text-sm text-muted-foreground mt-1">
                 por {c.creatorName || c.user?.name}
               </p>
-            )}
-            {c.voiceModel && (
-              <div className="inline-flex items-center gap-1.5 mt-2 px-2.5 py-1 rounded-full bg-primary/10 text-primary text-xs">
-                <Volume2 className="w-3 h-3" />
-                Voz: {c.voiceModel.name}
-              </div>
             )}
             {tags.length > 0 && (
               <div className="flex gap-1 flex-wrap mt-2 justify-center sm:justify-start">

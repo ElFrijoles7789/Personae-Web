@@ -27,21 +27,10 @@ export interface ChatMessage {
   createdAt: string;
 }
 
-export interface VoiceModelInfo {
-  id: string;
-  systemVoiceURI?: string | null;
-  systemVoiceName?: string | null;
-  systemVoiceLang?: string | null;
-  pitch?: number;
-  rate?: number;
-}
-
 interface ChatViewProps {
   messages: ChatMessage[];
   characterName: string;
   characterAvatar?: string | null;
-  voiceModelId?: string | null;
-  voiceModel?: VoiceModelInfo | null;
   onSend: (content: string) => Promise<void>;
   onEdit: (id: string, content: string) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
@@ -53,8 +42,6 @@ export function ChatView({
   messages,
   characterName,
   characterAvatar,
-  voiceModelId,
-  voiceModel,
   onSend,
   onEdit,
   onDelete,
@@ -65,9 +52,7 @@ export function ChatView({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState('');
   const [speakingId, setSpeakingId] = useState<string | null>(null);
-  const [ttsLoading, setTtsLoading] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const { toast } = useToast();
 
@@ -98,10 +83,6 @@ export function ChatView({
   }
 
   function stopAllPlayback() {
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current = null;
-    }
     if (typeof window !== 'undefined' && window.speechSynthesis) {
       window.speechSynthesis.cancel();
     }
@@ -125,7 +106,7 @@ export function ChatView({
     const cleanText = m.content.replace(/\*[^*]*\*/g, '').trim();
     const textToSpeak = cleanText || m.content;
 
-    // Use the browser's built-in speechSynthesis API for all voices
+    // Use the browser's built-in speechSynthesis API
     if (typeof window === 'undefined' || !window.speechSynthesis) {
       toast({
         title: 'Tu navegador no soporta lectura en voz alta',
@@ -134,32 +115,22 @@ export function ChatView({
       return;
     }
 
+    // Detect the language of the text and read in that language
     const lang = detectLanguage(textToSpeak);
     const locale = languageToLocale(lang);
     const utterance = new SpeechSynthesisUtterance(textToSpeak);
     utterance.lang = locale;
-    utterance.rate = voiceModel?.rate ?? 1.0;
-    utterance.pitch = voiceModel?.pitch ?? 1.0;
+    utterance.rate = 1.0;
+    utterance.pitch = 1.0;
 
-    // Get all available system voices
+    // Find the best system voice for the detected language
     const voices = window.speechSynthesis.getVoices();
-
-    // If the character has a trained voice model with a specific system voice, use it
-    if (voiceModel?.systemVoiceURI) {
-      const modelVoice = voices.find((v) => v.voiceURI === voiceModel.systemVoiceURI);
-      if (modelVoice) {
-        utterance.voice = modelVoice;
-        utterance.lang = modelVoice.lang;
-      }
-    } else {
-      // No custom voice model — pick the best voice for the detected language
-      const matchingVoice =
-        voices.find((v) => v.lang === locale) ||
-        voices.find((v) => v.lang.startsWith(lang)) ||
-        voices.find((v) => v.lang.toLowerCase().includes(lang));
-      if (matchingVoice) {
-        utterance.voice = matchingVoice;
-      }
+    const matchingVoice =
+      voices.find((v) => v.lang === locale) ||
+      voices.find((v) => v.lang.startsWith(lang)) ||
+      voices.find((v) => v.lang.toLowerCase().includes(lang));
+    if (matchingVoice) {
+      utterance.voice = matchingVoice;
     }
 
     utterance.onend = () => {
@@ -285,13 +256,10 @@ export function ChatView({
                         size="sm"
                         variant="ghost"
                         className="h-7 px-2 text-xs"
-                        disabled={ttsLoading === m.id}
                         onClick={() => speakMessage(m)}
-                        title={voiceModelId ? 'Leer en voz alta (voz personalizada)' : 'Leer en voz alta (voz por defecto)'}
+                        title="Leer en voz alta"
                       >
-                        {ttsLoading === m.id ? (
-                          <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-                        ) : speakingId === m.id ? (
+                        {speakingId === m.id ? (
                           <Square className="w-3 h-3 mr-1" />
                         ) : (
                           <Volume2 className="w-3 h-3 mr-1" />

@@ -5,21 +5,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import { Loader2, Sparkles, Upload, X, Lock, Globe2, Mic, Volume2 } from 'lucide-react';
+import { Loader2, Sparkles, Upload, X, Lock, Globe2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-
-export interface VoiceModelOption {
-  id: string;
-  name: string;
-  voiceId: string;
-}
 
 export interface CharacterFormData {
   name: string;
@@ -32,7 +19,6 @@ export interface CharacterFormData {
   creatorName: string;
   tags: string;
   visibility: 'private' | 'public';
-  voiceModelId: string;
 }
 
 const EMPTY: CharacterFormData = {
@@ -46,7 +32,6 @@ const EMPTY: CharacterFormData = {
   creatorName: '',
   tags: '',
   visibility: 'private',
-  voiceModelId: '',
 };
 
 interface Props {
@@ -54,7 +39,6 @@ interface Props {
   onSubmit: (data: CharacterFormData) => Promise<void>;
   onCancel: () => void;
   submitLabel?: string;
-  voiceModels?: VoiceModelOption[];
 }
 
 export function CharacterForm({
@@ -62,7 +46,6 @@ export function CharacterForm({
   onSubmit,
   onCancel,
   submitLabel = 'Guardar',
-  voiceModels = [],
 }: Props) {
   const [data, setData] = useState<CharacterFormData>({ ...EMPTY, ...initial });
   const [busy, setBusy] = useState(false);
@@ -289,31 +272,6 @@ export function CharacterForm({
                 </span>
               </button>
             </div>
-          </div>
-          <div>
-            <Label className="flex items-center gap-1">
-              <Volume2 className="w-3.5 h-3.5" />
-              Modelo de voz (opcional)
-            </Label>
-            <Select
-              value={data.voiceModelId || 'none'}
-              onValueChange={(v) => set('voiceModelId', v === 'none' ? '' : v)}
-            >
-              <SelectTrigger className="mt-1">
-                <SelectValue placeholder="Voz por defecto (sin modelo)" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">Voz por defecto (sin modelo)</SelectItem>
-                {voiceModels.map((vm) => (
-                  <SelectItem key={vm.id} value={vm.id}>
-                    {vm.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <p className="text-xs text-muted-foreground mt-1">
-              Si seleccionas un modelo de voz entrenado, el chat podrá leer los mensajes en voz alta con esa voz. Puedes crear modelos en la sección "Modelos de voz" de la barra lateral.
-            </p>
           </div>
         </div>
       </div>
