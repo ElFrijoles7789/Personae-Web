@@ -41,11 +41,27 @@ import {
   Loader2,
   Lock,
   Globe2,
+  Volume2,
+  Mic,
+  AudioLines,
+  Play,
+  Square,
+  Upload,
+  X,
 } from 'lucide-react';
 import { CharacterForm, type CharacterFormData } from './character-form';
 import { ChatView, type ChatMessage } from './chat-view';
 import { AuthBar } from './auth-bar';
+import { VoiceModelManager } from './voice-model-manager';
 import { useToast } from '@/hooks/use-toast';
+
+interface VoiceModel {
+  id: string;
+  name: string;
+  status: string;
+  voiceId: string;
+  userId: string;
+}
 
 interface Character {
   id: string;
@@ -59,6 +75,8 @@ interface Character {
   creatorName: string | null;
   tags: string | null;
   visibility: 'private' | 'public';
+  voiceModelId?: string | null;
+  voiceModel?: VoiceModel | null;
   userId?: string;
   user?: { name: string | null } | null;
   createdAt: string;
@@ -102,9 +120,25 @@ export function CharacterApp() {
   const [chatNameValue, setChatNameValue] = useState('');
   const [renamingChatId, setRenamingChatId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
+  const [voiceManagerOpen, setVoiceManagerOpen] = useState(false);
+  const [voiceModels, setVoiceModels] = useState<VoiceModel[]>([]);
   const { toast } = useToast();
   const { data: session, status } = useSession();
   const isAuthenticated = status === 'authenticated' && !!session?.user;
+
+  const loadVoiceModels = useCallback(async () => {
+    if (!isAuthenticated) {
+      setVoiceModels([]);
+      return;
+    }
+    try {
+      const res = await fetch('/api/voice-models');
+      const json = await res.json();
+      setVoiceModels(json.voiceModels || []);
+    } catch {
+      setVoiceModels([]);
+    }
+  }, [isAuthenticated]);
 
   const loadCharacters = useCallback(async () => {
     const res = await fetch('/api/characters');
@@ -128,6 +162,7 @@ export function CharacterApp() {
     if (status === 'loading') return;
     loadCharacters();
     loadChats();
+    loadVoiceModels();
     if (tab === 'gallery') loadGallery();
     // reset view to home if user logged out
     if (!isAuthenticated) {
@@ -139,7 +174,7 @@ export function CharacterApp() {
           : prev,
       );
     }
-  }, [status, isAuthenticated, loadCharacters, loadChats, loadGallery, tab]);
+  }, [status, isAuthenticated, loadCharacters, loadChats, loadGallery, loadVoiceModels, tab]);
 
   useEffect(() => {
     if (tab === 'gallery') loadGallery();
@@ -433,15 +468,15 @@ export function CharacterApp() {
             label="Chats"
           />
           <TabBtn
-            active={tab === 'gallery'}
-            onClick={() => setTab('gallery')}
+            active={view.kind === 'gallery'}
+            onClick={() => { setTab('gallery'); setView({ kind: 'gallery' }); loadGallery(); }}
             icon={<Globe className="w-3.5 h-3.5" />}
             label="Galería"
           />
         </div>
 
         <div className="px-3 py-2">
-          {tab !== 'chats' && (
+          {tab !== 'chats' && tab !== 'gallery' && (
             <div className="relative">
               <Search className="w-3.5 h-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
               <Input
@@ -539,28 +574,9 @@ export function CharacterApp() {
 
           {tab === 'gallery' && (
             <div className="space-y-1">
-              {gallery.length === 0 && (
-                <p className="text-xs text-muted-foreground text-center py-6 px-3">
-                  Nadie ha publicado personajes todavía. ¡Sé el primero!
-                </p>
-              )}
-              {gallery
-                .filter(
-                  (c) =>
-                    c.name.toLowerCase().includes(search.toLowerCase()) ||
-                    (c.tags || '').toLowerCase().includes(search.toLowerCase()),
-                )
-                .map((c) => (
-                  <CharacterRow
-                    key={c.id}
-                    c={c}
-                    showAuthor
-                    onOpen={() => setView({ kind: 'character', character: c })}
-                    active={
-                      view.kind === 'character' && view.character.id === c.id
-                    }
-                  />
-                ))}
+              <p className="text-xs text-muted-foreground text-center py-6 px-3">
+                La galería se muestra en grande a la derecha. Pulsa cualquier personaje para verlo.
+              </p>
             </div>
           )}
         </ScrollArea>
@@ -575,9 +591,31 @@ export function CharacterApp() {
             <Home className="w-4 h-4 mr-2" />
             Inicio
           </Button>
+          {isAuthenticated && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="w-full justify-start"
+              onClick={() => setVoiceManagerOpen(true)}
+            >
+              <Mic className="w-4 h-4 mr-2" />
+              Modelos de voz
+              {voiceModels.filter((v) => v.status === 'ready').length > 0 && (
+                <Badge variant="secondary" className="ml-auto text-[10px] px-1.5 py-0">
+                  {voiceModels.filter((v) => v.status === 'ready').length}
+                </Badge>
+              )}
+            </Button>
+          )}
           <AuthBar />
         </div>
       </aside>
+
+      <VoiceModelManager
+        open={voiceManagerOpen}
+        onOpenChange={setVoiceManagerOpen}
+        onCreated={loadVoiceModels}
+      />
 
       {/* Mobile top tabs */}
       <div className="md:hidden fixed top-0 left-0 right-0 z-50 bg-sidebar border-b px-2 py-2 flex gap-1">
@@ -596,8 +634,8 @@ export function CharacterApp() {
           full
         />
         <TabBtn
-          active={tab === 'gallery'}
-          onClick={() => setTab('gallery')}
+          active={view.kind === 'gallery'}
+          onClick={() => { setTab('gallery'); setView({ kind: 'gallery' }); loadGallery(); }}
           icon={<Globe className="w-3.5 h-3.5" />}
           label="Galería"
           full
@@ -610,6 +648,13 @@ export function CharacterApp() {
           <HomeView
             authenticated={isAuthenticated}
             onCreate={() => setView({ kind: 'create' })}
+          />
+        )}
+
+        {view.kind === 'gallery' && (
+          <GalleryView
+            characters={gallery}
+            onOpen={(c) => setView({ kind: 'character', character: c })}
           />
         )}
 
@@ -629,6 +674,9 @@ export function CharacterApp() {
               onSubmit={createCharacter}
               onCancel={() => setView({ kind: 'home' })}
               submitLabel="Crear personaje"
+              voiceModels={voiceModels
+                .filter((v) => v.status === 'ready')
+                .map((v) => ({ id: v.id, name: v.name, voiceId: v.voiceId }))}
             />
           </div>
         )}
@@ -654,7 +702,11 @@ export function CharacterApp() {
                 creatorName: view.character.creatorName || '',
                 tags: view.character.tags || '',
                 visibility: view.character.visibility,
+                voiceModelId: view.character.voiceModelId || '',
               }}
+              voiceModels={voiceModels
+                .filter((v) => v.status === 'ready')
+                .map((v) => ({ id: v.id, name: v.name, voiceId: v.voiceId }))}
               onSubmit={(d) => updateCharacter(view.character.id, d)}
               onCancel={() =>
                 setView({ kind: 'character', character: view.character })
@@ -754,6 +806,7 @@ export function CharacterApp() {
               messages={view.chat.messages || []}
               characterName={view.chat.character?.name || 'Personaje'}
               characterAvatar={view.chat.character?.avatar}
+              voiceModelId={view.chat.character?.voiceModelId}
               onSend={sendMessage}
               onEdit={editMessage}
               onDelete={deleteMessage}
@@ -1051,6 +1104,110 @@ function Feature({
   );
 }
 
+function GalleryView({
+  characters,
+  onOpen,
+}: {
+  characters: Character[];
+  onOpen: (c: Character) => void;
+}) {
+  const [search, setSearch] = useState('');
+  const filtered = characters.filter(
+    (c) =>
+      c.name.toLowerCase().includes(search.toLowerCase()) ||
+      (c.tags || '').toLowerCase().includes(search.toLowerCase()) ||
+      (c.creatorName || c.user?.name || '').toLowerCase().includes(search.toLowerCase()),
+  );
+  return (
+    <div className="flex-1 overflow-y-auto">
+      <div className="max-w-6xl mx-auto px-4 py-6 md:py-10">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
+          <div>
+            <h1 className="text-2xl font-bold flex items-center gap-2">
+              <Globe2 className="w-6 h-6" />
+              Galería de la comunidad
+            </h1>
+            <p className="text-sm text-muted-foreground mt-1">
+              Explora los personajes públicos creados por la comunidad. {characters.length} personajes disponibles.
+            </p>
+          </div>
+          <div className="relative w-full sm:w-64">
+            <Search className="w-4 h-4 absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Buscar por nombre, tag o autor..."
+              className="pl-8"
+            />
+          </div>
+        </div>
+
+        {filtered.length === 0 ? (
+          <div className="text-center py-16">
+            <Globe2 className="w-12 h-12 mx-auto text-muted-foreground mb-3 opacity-50" />
+            <p className="text-muted-foreground">
+              {characters.length === 0
+                ? 'Nadie ha publicado personajes todavía. ¡Sé el primero!'
+                : 'No se encontraron personajes con ese criterio.'}
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            {filtered.map((c) => {
+              const tags = (c.tags || '').split(',').map((t) => t.trim()).filter(Boolean).slice(0, 3);
+              return (
+                <div
+                  key={c.id}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => onOpen(c)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(c); } }}
+                  className="border rounded-xl p-4 bg-card hover:shadow-md hover:border-primary/30 transition-all cursor-pointer flex flex-col gap-3 group"
+                >
+                  <div className="flex items-start gap-3">
+                    <Avatar className="w-14 h-14 shrink-0 rounded-lg">
+                      <AvatarImage src={c.avatar || undefined} alt={c.name} />
+                      <AvatarFallback className="text-sm rounded-lg">{c.name.slice(0, 2).toUpperCase()}</AvatarFallback>
+                    </Avatar>
+                    <div className="min-w-0 flex-1">
+                      <p className="font-semibold text-sm truncate group-hover:text-primary transition-colors">{c.name}</p>
+                      <p className="text-xs text-muted-foreground truncate">
+                        por {c.creatorName || c.user?.name || 'Anónimo'}
+                      </p>
+                      {c.voiceModel && (
+                        <span className="inline-flex items-center gap-1 mt-1 text-[10px] text-primary">
+                          <Volume2 className="w-2.5 h-2.5" />
+                          Voz personalizada
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <p className="text-xs text-muted-foreground line-clamp-3 min-h-[3.5em] leading-relaxed">
+                    {c.description}
+                  </p>
+                  {tags.length > 0 && (
+                    <div className="flex gap-1 flex-wrap mt-auto">
+                      {tags.map((t) => (
+                        <Badge key={t} variant="outline" className="text-[10px] px-1.5 py-0">
+                          {t}
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
+                  <Button size="sm" variant="secondary" className="w-full mt-1">
+                    <MessageCircle className="w-3.5 h-3.5 mr-1" />
+                    Ver y chatear
+                  </Button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function CharacterDetail({
   c,
   onEdit,
@@ -1099,6 +1256,12 @@ function CharacterDetail({
               <p className="text-sm text-muted-foreground mt-1">
                 por {c.creatorName || c.user?.name}
               </p>
+            )}
+            {c.voiceModel && (
+              <div className="inline-flex items-center gap-1.5 mt-2 px-2.5 py-1 rounded-full bg-primary/10 text-primary text-xs">
+                <Volume2 className="w-3 h-3" />
+                Voz: {c.voiceModel.name}
+              </div>
             )}
             {tags.length > 0 && (
               <div className="flex gap-1 flex-wrap mt-2 justify-center sm:justify-start">

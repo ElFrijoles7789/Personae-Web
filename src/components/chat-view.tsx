@@ -13,6 +13,8 @@ import {
   Send,
   Loader2,
   Copy,
+  Volume2,
+  Square,
 } from 'lucide-react';
 import { renderRichText } from '@/lib/format';
 import { useToast } from '@/hooks/use-toast';
@@ -28,6 +30,7 @@ interface ChatViewProps {
   messages: ChatMessage[];
   characterName: string;
   characterAvatar?: string | null;
+  voiceModelId?: string | null;
   onSend: (content: string) => Promise<void>;
   onEdit: (id: string, content: string) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
@@ -39,6 +42,7 @@ export function ChatView({
   messages,
   characterName,
   characterAvatar,
+  voiceModelId,
   onSend,
   onEdit,
   onDelete,
@@ -48,7 +52,10 @@ export function ChatView({
   const [input, setInput] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState('');
+  const [speakingId, setSpeakingId] = useState<string | null>(null);
+  const [ttsLoading, setTtsLoading] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -76,6 +83,69 @@ export function ChatView({
     setEditingId(null);
     setEditDraft('');
   }
+
+  async function speakMessage(m: ChatMessage) {
+    // If already speaking this message, stop
+    if (speakingId === m.id) {
+      audioRef.current?.pause();
+      audioRef.current = null;
+      setSpeakingId(null);
+      return;
+    }
+    // Stop any current audio
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+    setTtsLoading(m.id);
+    try {
+      // Strip asterisk-wrapped actions for cleaner speech
+      const cleanText = m.content.replace(/\*[^*]*\*/g, '').trim();
+      const textToSpeak = cleanText || m.content;
+      const res = await fetch('/api/ai/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: textToSpeak,
+          voiceModelId: voiceModelId || undefined,
+        }),
+      });
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
+        throw new Error(json.error || 'Error al generar audio');
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      audio.onended = () => {
+        setSpeakingId(null);
+        URL.revokeObjectURL(url);
+      };
+      audio.onerror = () => {
+        setSpeakingId(null);
+        URL.revokeObjectURL(url);
+      };
+      audioRef.current = audio;
+      setSpeakingId(m.id);
+      await audio.play();
+    } catch (e) {
+      toast({
+        title: 'No se pudo generar el audio',
+        description: e instanceof Error ? e.message : '',
+        variant: 'destructive',
+      });
+    } finally {
+      setTtsLoading(null);
+    }
+  }
+
+  // Cleanup audio on unmount
+  useEffect(() => {
+    return () => {
+      audioRef.current?.pause();
+      audioRef.current = null;
+    };
+  }, []);
 
   return (
     <div className="flex flex-col h-full min-h-0">
@@ -164,6 +234,25 @@ export function ChatView({
 
                 {!isEditing && (
                   <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    {!isUser && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 px-2 text-xs"
+                        disabled={ttsLoading === m.id}
+                        onClick={() => speakMessage(m)}
+                        title={voiceModelId ? 'Leer en voz alta (voz personalizada)' : 'Leer en voz alta (voz por defecto)'}
+                      >
+                        {ttsLoading === m.id ? (
+                          <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                        ) : speakingId === m.id ? (
+                          <Square className="w-3 h-3 mr-1" />
+                        ) : (
+                          <Volume2 className="w-3 h-3 mr-1" />
+                        )}
+                        {speakingId === m.id ? 'Detener' : 'Leer'}
+                      </Button>
+                    )}
                     <Button
                       size="sm"
                       variant="ghost"

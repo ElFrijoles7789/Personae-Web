@@ -72,7 +72,7 @@ export async function POST(req: NextRequest) {
   }
   const full = await db.chat.findUnique({
     where: { id: chat.id },
-    include: { messages: { orderBy: { createdAt: 'asc' } }, character: true },
+    include: { messages: { orderBy: { createdAt: 'asc' } }, character: { include: { voiceModel: true } } },
   });
   return NextResponse.json({ chat: full }, { status: 201 });
 }

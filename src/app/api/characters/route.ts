@@ -11,6 +11,7 @@ export async function GET() {
   const characters = await db.character.findMany({
     where: { userId: user.id },
     orderBy: { updatedAt: 'desc' },
+    include: { voiceModel: true },
   });
   return NextResponse.json({ characters });
 }
@@ -37,6 +38,7 @@ export async function POST(req: NextRequest) {
       creatorName,
       tags,
       visibility,
+      voiceModelId,
     } = body;
 
     if (!name || !description) {
@@ -44,6 +46,15 @@ export async function POST(req: NextRequest) {
         { error: 'Nombre y descripción son obligatorios' },
         { status: 400 },
       );
+    }
+
+    // Validate voiceModelId belongs to user and is ready (if provided)
+    let validVoiceModelId: string | null = null;
+    if (voiceModelId) {
+      const vm = await db.voiceModel.findUnique({ where: { id: voiceModelId } });
+      if (vm && vm.userId === user.id && vm.status === 'ready') {
+        validVoiceModelId = vm.id;
+      }
     }
 
     const character = await db.character.create({
@@ -59,8 +70,10 @@ export async function POST(req: NextRequest) {
         creatorName: creatorName ?? null,
         tags: tags ?? null,
         visibility: visibility === 'public' ? 'public' : 'private',
+        voiceModelId: validVoiceModelId,
         userId: user.id,
       },
+      include: { voiceModel: true },
     });
 
     return NextResponse.json({ character }, { status: 201 });

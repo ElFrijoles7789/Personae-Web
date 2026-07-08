@@ -8,7 +8,10 @@ export async function GET(
 ) {
   const { id } = await params;
   const user = await getCurrentUser();
-  const character = await db.character.findUnique({ where: { id } });
+  const character = await db.character.findUnique({
+    where: { id },
+    include: { voiceModel: true },
+  });
   if (!character) {
     return NextResponse.json({ error: 'No encontrado' }, { status: 404 });
   }
@@ -46,7 +49,23 @@ export async function PUT(
     creatorName,
     tags,
     visibility,
+    voiceModelId,
   } = body;
+
+  // Validate voiceModelId if provided (null = unlink)
+  let validVoiceModelId: string | null | undefined = undefined;
+  if (voiceModelId !== undefined) {
+    if (voiceModelId === null || voiceModelId === '') {
+      validVoiceModelId = null;
+    } else {
+      const vm = await db.voiceModel.findUnique({ where: { id: voiceModelId } });
+      if (vm && vm.userId === user.id && vm.status === 'ready') {
+        validVoiceModelId = vm.id;
+      } else {
+        validVoiceModelId = null;
+      }
+    }
+  }
 
   try {
     const character = await db.character.update({
@@ -67,7 +86,9 @@ export async function PUT(
         ...(visibility !== undefined
           ? { visibility: visibility === 'public' ? 'public' : 'private' }
           : {}),
+        ...(validVoiceModelId !== undefined ? { voiceModelId: validVoiceModelId } : {}),
       },
+      include: { voiceModel: true },
     });
     return NextResponse.json({ character });
   } catch (e) {

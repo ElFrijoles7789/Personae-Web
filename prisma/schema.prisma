@@ -23,6 +23,7 @@ model User {
   sessions      Session[]
   characters    Character[]
   chats         Chat[]
+  voiceModels   VoiceModel[]
 }
 
 model Account {
@@ -73,6 +74,9 @@ model Character {
   tags                        String?
   // visibility: "private" (only owner) | "public" (visible in gallery to everyone)
   visibility                  String   @default("private")
+  // optional link to a VoiceModel for read-aloud in chat
+  voiceModelId                String?
+  voiceModel                  VoiceModel? @relation(fields: [voiceModelId], references: [id], onDelete: SetNull)
   userId                      String
   user                        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   createdAt                   DateTime @default(now())
@@ -81,6 +85,26 @@ model Character {
 
   @@index([userId])
   @@index([visibility])
+}
+
+model VoiceModel {
+  id              String   @id @default(cuid())
+  name            String
+  // status: "draft" (uploading samples) | "ready" (voice selected, usable)
+  status          String   @default("draft")
+  // the SDK voice id chosen by the user as closest to their samples
+  voiceId         String   @default("tongtong")
+  // JSON array of audio sample URLs (stored as comma-separated for SQLite compatibility)
+  samples         String   @default("")
+  // total duration of uploaded samples in seconds
+  totalDurationSec Int     @default(0)
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  characters      Character[]
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([userId])
 }
 
 model Chat {

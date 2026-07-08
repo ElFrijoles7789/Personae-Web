@@ -15,7 +15,7 @@ export async function GET(
     where: { id },
     include: {
       messages: { orderBy: { createdAt: 'asc' } },
-      character: true,
+      character: { include: { voiceModel: true } },
     },
   });
   if (!chat || chat.userId !== user.id) {

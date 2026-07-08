@@ -10,6 +10,7 @@ export async function GET() {
       user: {
         select: { name: true },
       },
+      voiceModel: true,
     },
   });
   return NextResponse.json({ characters });
