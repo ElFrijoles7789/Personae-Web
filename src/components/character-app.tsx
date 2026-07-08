@@ -45,6 +45,9 @@ import {
 import { CharacterForm, type CharacterFormData } from './character-form';
 import { ChatView, type ChatMessage } from './chat-view';
 import { AuthBar } from './auth-bar';
+import { ThemeToggle } from './theme-toggle';
+import { LanguageToggle } from './language-toggle';
+import { useI18n } from '@/lib/i18n/provider';
 import { useToast } from '@/hooks/use-toast';
 
 interface Character {
@@ -103,6 +106,7 @@ export function CharacterApp() {
   const [renamingChatId, setRenamingChatId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const { toast } = useToast();
+  const { t } = useI18n();
   const { data: session, status } = useSession();
   const isAuthenticated = status === 'authenticated' && !!session?.user;
 
@@ -427,7 +431,7 @@ export function CharacterApp() {
             }
           >
             <Plus className="w-4 h-4 mr-1" />
-            Crear personaje
+            {t('nav.create')}
           </Button>
         </div>
 
@@ -436,19 +440,19 @@ export function CharacterApp() {
             active={tab === 'mine'}
             onClick={() => setTab('mine')}
             icon={<Users className="w-3.5 h-3.5" />}
-            label="Míos"
+            label={t('nav.mine')}
           />
           <TabBtn
             active={tab === 'chats'}
             onClick={() => setTab('chats')}
             icon={<MessageSquare className="w-3.5 h-3.5" />}
-            label="Chats"
+            label={t('nav.chats')}
           />
           <TabBtn
             active={view.kind === 'gallery'}
             onClick={() => { setTab('gallery'); setView({ kind: 'gallery' }); loadGallery(); }}
             icon={<Globe className="w-3.5 h-3.5" />}
-            label="Galería"
+            label={t('nav.gallery')}
           />
         </div>
 
@@ -459,7 +463,7 @@ export function CharacterApp() {
               <Input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Buscar..."
+                placeholder={t('search.placeholder')}
                 className="h-8 pl-7 text-sm"
               />
             </div>
@@ -566,8 +570,12 @@ export function CharacterApp() {
             onClick={() => setView({ kind: 'home' })}
           >
             <Home className="w-4 h-4 mr-2" />
-            Inicio
+            {t('nav.home')}
           </Button>
+          <div className="flex gap-1">
+            <ThemeToggle />
+            <LanguageToggle />
+          </div>
           <AuthBar />
         </div>
       </aside>
@@ -579,21 +587,21 @@ export function CharacterApp() {
           active={tab === 'mine'}
           onClick={() => setTab('mine')}
           icon={<Users className="w-3.5 h-3.5" />}
-          label="Míos"
+          label={t('nav.mine')}
           full
         />
         <TabBtn
           active={tab === 'chats'}
           onClick={() => setTab('chats')}
           icon={<MessageSquare className="w-3.5 h-3.5" />}
-          label="Chats"
+          label={t('nav.chats')}
           full
         />
         <TabBtn
           active={view.kind === 'gallery'}
           onClick={() => { setTab('gallery'); setView({ kind: 'gallery' }); loadGallery(); }}
           icon={<Globe className="w-3.5 h-3.5" />}
-          label="Galería"
+          label={t('nav.gallery')}
           full
         />
       </div>
@@ -984,6 +992,7 @@ function HomeView({
   onCreate: () => void;
   authenticated: boolean;
 }) {
+  const { t } = useI18n();
   return (
     <div className="flex-1 overflow-y-auto">
       <div className="max-w-3xl mx-auto px-4 py-10 md:py-20 text-center">
@@ -991,40 +1000,37 @@ function HomeView({
           <Sparkles className="w-8 h-8" />
         </div>
         <h1 className="text-3xl md:text-4xl font-bold mb-3">
-          Crea personajes ficticios y habla con ellos
+          {t('home.title')}
         </h1>
         <p className="text-muted-foreground mb-8 max-w-xl mx-auto">
-          Describe quién es tu personaje y la IA generará su personalidad, su
-          apariencia y su escenario. Luego podrás chatear sin censuras, editar
-          mensajes, rebobinar la historia y guardar tus personajes en privado
-          o publicarlos en la galería.
+          {t('home.description')}
         </p>
         {authenticated ? (
           <Button size="lg" onClick={onCreate}>
             <Plus className="w-4 h-4 mr-2" />
-            Crear mi primer personaje
+            {t('home.createFirst')}
           </Button>
         ) : (
           <div className="inline-flex items-center gap-2 px-4 py-3 rounded-md border bg-card text-sm text-muted-foreground">
             <Lock className="w-4 h-4" />
-            Inicia sesión en la barra lateral para empezar a crear personajes.
+            {t('home.loginRequired')}
           </div>
         )}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-12 text-left">
           <Feature
             icon={<Sparkles className="w-4 h-4" />}
-            title="Generación con IA"
-            desc="Describe a tu personaje y deja que la IA rellene los detalles."
+            title={t('home.feature.ai.title')}
+            desc={t('home.feature.ai.desc')}
           />
           <Feature
             icon={<MessageCircle className="w-4 h-4" />}
-            title="Chat sin censuras"
-            desc="Habla de lo que quieras. Usa *asteriscos* para acciones."
+            title={t('home.feature.chat.title')}
+            desc={t('home.feature.chat.desc')}
           />
           <Feature
             icon={<Globe2 className="w-4 h-4" />}
-            title="Privado o público"
-            desc="Guarda tus personajes en privado o publícalos en la galería."
+            title={t('home.feature.community.title')}
+            desc={t('home.feature.community.desc')}
           />
         </div>
       </div>
