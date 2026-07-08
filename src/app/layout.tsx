@@ -15,10 +15,14 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Personajes IA — Crea y habla con personajes ficticios",
+  title: "Personae — Crea y habla con personajes ficticios",
   description: "Crea personajes ficticios con IA, chatea sin censuras, edita mensajes, rebobina, sube avatares y publica en la galería.",
-  keywords: ["personajes", "IA", "rol", "chat", "ficción", "rolplay"],
-  authors: [{ name: "Personajes IA" }],
+  keywords: ["personae", "personajes", "IA", "rol", "chat", "ficción", "rolplay"],
+  authors: [{ name: "Personae" }],
+  icons: {
+    icon: "/logo.svg",
+    apple: "/logo.svg",
+  },
 };
 
 export default function RootLayout({

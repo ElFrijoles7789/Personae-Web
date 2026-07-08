@@ -403,6 +403,18 @@ export function CharacterApp() {
     <div className="flex h-screen w-full bg-background">
       {/* Sidebar */}
       <aside className="w-72 border-r bg-sidebar flex flex-col shrink-0 hidden md:flex">
+        {/* Brand header */}
+        <div
+          className="p-4 border-b flex items-center gap-3 cursor-pointer hover:bg-sidebar-accent/50 transition-colors"
+          onClick={() => setView({ kind: 'home' })}
+        >
+          <img src="/logo.svg" alt="Personae" className="w-10 h-10 rounded-lg shrink-0" />
+          <div className="min-w-0">
+            <h1 className="text-lg font-bold leading-tight">Personae</h1>
+            <p className="text-[11px] text-muted-foreground truncate">Personajes con IA</p>
+          </div>
+        </div>
+
         <div className="p-4 border-b">
           <Button
             className="w-full"
@@ -561,7 +573,8 @@ export function CharacterApp() {
       </aside>
 
       {/* Mobile top tabs */}
-      <div className="md:hidden fixed top-0 left-0 right-0 z-50 bg-sidebar border-b px-2 py-2 flex gap-1">
+      <div className="md:hidden fixed top-0 left-0 right-0 z-50 bg-sidebar border-b px-2 py-2 flex gap-1 items-center">
+        <img src="/logo.svg" alt="Personae" className="w-7 h-7 rounded-md shrink-0 mr-1" />
         <TabBtn
           active={tab === 'mine'}
           onClick={() => setTab('mine')}
