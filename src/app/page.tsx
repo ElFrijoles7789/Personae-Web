@@ -1,7 +1,5 @@
-'use client';
-
-import { CharacterApp } from '@/components/character-app';
-
 export default function Home() {
-  return <CharacterApp />;
+  return (
+    <meta httpEquiv="refresh" content="0; url=/app.html" />
+  );
 }
