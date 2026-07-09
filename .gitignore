@@ -52,3 +52,10 @@ prompt
 server.log
 # Skills directory
 /skills/
+# Database
+/db/
+# Uploaded files
+/public/avatars/
+/public/voice-samples/
+# Scripts
+/scripts/
